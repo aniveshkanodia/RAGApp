@@ -1,3 +1,8 @@
+from dotenv import load_dotenv
+
+#load environment variables from a .env file for langsmith tracing
+load_dotenv()
+
 from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
