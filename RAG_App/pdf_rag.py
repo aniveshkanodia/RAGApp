@@ -17,26 +17,6 @@ import gradio as gr
 import os
 from typing import List
 
-def load():
-    #Load the PDF Document
-    loader = PyPDFLoader("/Users/akanodia/RAGApp/RAG_App/documents/AI in 2024.pdf")
-    pages = loader.load_and_split()
-    '''
-    loader.load will load the entire pdf in 1 document object.
-    load_and_split create separate document object for every split.
-    '''
-    #split pages by char
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size = 1000,
-        chunk_overlap = 100,
-        length_function = len,
-        add_start_index = True
-    )
-    chunks = text_splitter.split_documents(pages)
-    print(f"Split {len(pages)} documents into {len(chunks)} chunks.")
-    return chunks
-
-
 def load_document(file_path: str) -> List[Document]:
     """Load a document based on its file extension.
     
@@ -84,15 +64,6 @@ def init_rag():
         persist_directory="./db/chroma_db",
     )
 
-    try:
-        needs_ingest = vectordb._collection.count() == 0  # type: ignore[attr-defined]
-    except Exception:
-        needs_ingest = True
-
-    if needs_ingest:
-        chunks = load()
-        vectordb.add_documents(documents=chunks)
-
     retriever = vectordb.as_retriever(
         search_type="similarity",
         search_kwargs={"k": 4},
@@ -102,18 +73,18 @@ def init_rag():
 
     chat_prompt = ChatPromptTemplate(
         [
-            (
-                "system",
-                "You are a helpful assistant. Use the context to answer the question. If you don’t know, say you don’t know.",
-            ),
-            ("human", "{context}\n\nQuestion: {question}"),
+                (
+                    "system",
+                    "You are a helpful assistant. Use the context to answer the question. If you don't know, say you don't know.",
+                ),
+                ("human", "{context}\n\nQuestion: {question}"),
         ]
     )
 
     retrieve_context = RunnableLambda(
         lambda input_dict: {
             "context": "\n\n".join(
-                doc.page_content for doc in retriever.invoke(input_dict["question"])  # type: ignore[misc]
+                    doc.page_content for doc in retriever.invoke(input_dict["question"])  # type: ignore[misc]
             ),
             "question": input_dict["question"],
         }
