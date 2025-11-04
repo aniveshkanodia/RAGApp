@@ -38,6 +38,7 @@ def load_document(file_path: str) -> List[Document]:
     """Load a document based on its file extension.
     
     For PDF files, uses DoclingLoader to preserve structure.
+    Falls back to alternative PDF loader if DoclingLoader fails.
     For other file types, uses standard loaders.
     
     Args:
@@ -49,11 +50,33 @@ def load_document(file_path: str) -> List[Document]:
     file_ext = os.path.splitext(file_path)[1].lower()
     
     if file_ext == ".pdf":
-        loader = DoclingLoader(
-            file_path=file_path,
-            export_type=ExportType.DOC_CHUNKS  # Preserves structure with semantic chunking
-        )
-        documents = loader.load()
+        try:
+            # Try DoclingLoader first (preserves structure with semantic chunking)
+            loader = DoclingLoader(
+                file_path=file_path,
+                export_type=ExportType.DOC_CHUNKS
+            )
+            documents = loader.load()
+        except Exception as e:
+            # Fallback to PyPDFLoader if DoclingLoader fails
+            # Common reasons: missing page dimensions, corrupted PDF, non-standard format
+            error_msg = str(e).lower()
+            if "page-dimensions" in error_msg or "page dimension" in error_msg or "dimension" in error_msg:
+                # Use PyPDFLoader as fallback for PDFs with missing page dimension metadata
+                from langchain_community.document_loaders import PyPDFLoader
+                import warnings
+                warnings.warn(
+                    f"DoclingLoader failed due to missing page dimensions. "
+                    f"Falling back to PyPDFLoader. Error: {str(e)}"
+                )
+                loader = PyPDFLoader(file_path)
+                documents = loader.load()
+            else:
+                # Re-raise if it's a different error
+                raise ValueError(
+                    f"Failed to load PDF with DoclingLoader: {str(e)}. "
+                    f"PDF may be corrupted or have unsupported format."
+                ) from e
     elif file_ext == ".txt":
         loader = TextLoader(file_path)
         documents = loader.load()
@@ -76,6 +99,7 @@ def process_documents_for_chunking(
     """Process documents for chunking based on the export type.
     
     For PDF files with DOC_CHUNKS mode, documents are already chunked by HybridChunker.
+    For PDFs loaded with PyPDFLoader (fallback), use standard text splitting.
     For other document types, use standard text splitting.
     
     Args:
@@ -87,9 +111,26 @@ def process_documents_for_chunking(
     """
     file_ext = os.path.splitext(file_path)[1].lower()
     
-    # PDF files are already chunked by DoclingLoader with ExportType.DOC_CHUNKS
+    # PDF files loaded with DoclingLoader are already chunked by HybridChunker
+    # Check if documents have docling metadata to determine if they were chunked
     if file_ext == ".pdf":
-        return documents
+        # Check if documents have docling metadata (indicates DoclingLoader was used)
+        has_docling_metadata = any(
+            "dl_meta" in doc.metadata for doc in documents
+        )
+        if has_docling_metadata:
+            # Already chunked by DoclingLoader, return as-is
+            return documents
+        else:
+            # Loaded with fallback PyPDFLoader, need to chunk
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=100,
+                length_function=len,
+                add_start_index=True
+            )
+            chunks = text_splitter.split_documents(documents)
+            return chunks
     
     # For non-PDF files, use standard text splitting
     text_splitter = RecursiveCharacterTextSplitter(
