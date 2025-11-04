@@ -5,10 +5,17 @@ load_dotenv()
 
 import os
 import json
+import warnings
 from typing import List, Dict, Any
 
 # Set tokenizer parallelism to avoid warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# Filter out common PDF processing warnings that are non-fatal
+# The "could not find the page-dimensions" warning occurs when PDFs
+# don't have explicit page dimension metadata, but processing still works
+warnings.filterwarnings('ignore', message='.*page-dimensions.*')
+warnings.filterwarnings('ignore', message='.*could not find.*page.*dimensions.*', category=UserWarning)
 
 from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
